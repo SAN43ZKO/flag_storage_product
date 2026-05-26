@@ -60,6 +60,23 @@ func (s *ProductService) Update(ctx context.Context, id int64, req model.CreateP
 	return p, err
 }
 
+func (s *ProductService) UpdateImage(ctx context.Context, id int64, filename string) error {
+	product, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	req := model.CreateProductRequest{
+		Name:      product.Name,
+		SKU:       product.SKU,
+		Quantity:  product.Quantity,
+		Category:  product.Category,
+		Unit:      product.Unit,
+		ImagePath: filename,
+	}
+	_, err = s.repo.Update(ctx, id, req)
+	return err
+}
+
 func (s *ProductService) Delete(ctx context.Context, id int64) error {
 	err := s.repo.Delete(ctx, id)
 	if err != nil && strings.Contains(err.Error(), "not found") {

@@ -48,7 +48,12 @@ func main() {
 
 	productRepo := repository.NewProductRepo(pool)
 	productSvc := service.NewProductService(productRepo)
-	productHandler := handler.NewProductHundler(productSvc)
+
+	uploadDir := "./uploads/products"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		log.Fatalf("create upload dir: %v", err)
+	}
+	productHandler := handler.NewProductHundler(productSvc, uploadDir)
 
 	mux := http.NewServeMux()
 	productHandler.RegisterRoutes(mux)
