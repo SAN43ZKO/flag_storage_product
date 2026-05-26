@@ -30,6 +30,7 @@ func (h *ProductHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /products/{id}", h.GetByID)
 	mux.HandleFunc("PUT /products/{id}", h.Update)
 	mux.HandleFunc("DELETE /products/{id}", h.Delete)
+	//huy
 	mux.HandleFunc("POST /products/{id}/image", h.UploadImage)
 	mux.HandleFunc("GET /products/images/{filename}", h.ServeImage)
 }
