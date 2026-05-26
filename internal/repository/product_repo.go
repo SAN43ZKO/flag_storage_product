@@ -64,7 +64,7 @@ func (r *ProductRepo) GetByID(ctx context.Context, id int64) (model.Product, err
 	category,
 	image_path,
 	created_at,
-	update_at
+	updated_at
 	FROM products WHERE id = $1`
 	err := r.pool.QueryRow(ctx, getByIDQuery, id).Scan(
 		&p.ID,
