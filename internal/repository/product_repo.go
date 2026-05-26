@@ -112,7 +112,7 @@ func (r *ProductRepo) List(ctx context.Context, search string) ([]model.Product,
 	var products []model.Product
 	for rows.Next() {
 		var p model.Product
-		if err := rows.Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Unit, &p.Category, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Unit, &p.Category, &p.ImagePath, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("List(2): scan product: %w", err)
 		}
 		products = append(products, p)
