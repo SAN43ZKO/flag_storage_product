@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"storage/internal/model"
@@ -122,6 +123,7 @@ func (r *ProductRepo) List(ctx context.Context, search string) ([]model.Product,
 
 // Updates all fields of the product without id and created_at
 func (r *ProductRepo) Update(ctx context.Context, id int64, req model.CreateProductRequest) (model.Product, error) {
+	log.Printf("Update repo called: id=%d, ImagePath=%q", id, req.ImagePath)
 	var p model.Product
 	now := time.Now().UTC()
 	const updateQuery = `

@@ -62,11 +62,11 @@ func (s *ProductService) Update(ctx context.Context, id int64, req model.CreateP
 }
 
 func (s *ProductService) UpdateImage(ctx context.Context, id int64, filename string) error {
+	log.Printf("UpdateImage service called: id=%d, filename=%q", id, filename)
 	product, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	log.Printf("UploadImage called: productID=%d", id)
 	req := model.CreateProductRequest{
 		Name:      product.Name,
 		SKU:       product.SKU,
@@ -75,6 +75,7 @@ func (s *ProductService) UpdateImage(ctx context.Context, id int64, filename str
 		Unit:      product.Unit,
 		ImagePath: filename,
 	}
+	log.Printf("Calling Update with ImagePath=%q", filename)
 	_, err = s.repo.Update(ctx, id, req)
 	return err
 }
