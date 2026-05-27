@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 	"storage/internal/model"
 	"storage/internal/repository"
 	"strings"
@@ -65,6 +66,7 @@ func (s *ProductService) UpdateImage(ctx context.Context, id int64, filename str
 	if err != nil {
 		return err
 	}
+	log.Printf("UploadImage called: productID=%d", id)
 	req := model.CreateProductRequest{
 		Name:      product.Name,
 		SKU:       product.SKU,

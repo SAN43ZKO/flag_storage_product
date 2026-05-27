@@ -125,6 +125,7 @@ func (h *ProductHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	log.Printf("UploadImage called: productID=%d", id)
 
 	if _, err = h.svc.GetByID(r.Context(), id); err != nil {
 		writeError(w, http.StatusNotFound, "product not found")
@@ -142,6 +143,7 @@ func (h *ProductHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	ext := filepath.Ext(header.Filename)
 	filename := fmt.Sprintf("product_%d_%d%s", id, time.Now().UnixNano(), ext)
 	filePath := filepath.Join(h.uploadDir, filename)
+	log.Printf("Saving file: %s", filename)
 
 	dst, err := os.Create(filePath)
 	if err != nil {
@@ -161,7 +163,14 @@ func (h *ProductHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to update product")
 		return
 	}
-
+	log.Printf("Calling UpdateImage: productID=%d, filename=%s", id, filename)
+	if err := h.svc.UpdateImage(r.Context(), id, filename); err != nil {
+		log.Printf("UpdateImage failed: %v", err)
+		os.Remove(filePath)
+		writeError(w, http.StatusInternalServerError, "failed to update product")
+		return
+	}
+	log.Printf("Image uploaded successfully: productID=%d", id)
 	writeJson(w, http.StatusOK, map[string]string{"image_path": filename})
 }
 
