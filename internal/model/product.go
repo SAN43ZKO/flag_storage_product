@@ -9,7 +9,7 @@ type Product struct {
 	Quantity  int       `json:"quantity"`
 	Unit      *string   `json:"unit,omitempty"`
 	Category  *string   `json:"category,omitempty"`
-	ImagePath *string   `json:"iamge_path,omitempty"`
+	ImagePath *string   `json:"image_path,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -20,5 +20,5 @@ type CreateProductRequest struct {
 	Quantity  int     `json:"quantity"`
 	Unit      *string `json:"unit,omitempty"`
 	Category  *string `json:"category,omitempty"`
-	ImagePath string  `json:"iamge_path,omitempty"`
+	ImagePath string  `json:"image_path,omitempty"`
 }
