@@ -25,12 +25,14 @@ func NewProductHundler(svc *service.ProductService, uploadDir string) *ProductHa
 }
 
 func (h *ProductHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/stats", h.GetStats)
+	mux.HandleFunc("GET /api/products/low-stock", h.GetLowStock)
+	mux.HandleFunc("GET /api/categories", h.GetCategories)
 	mux.HandleFunc("GET /products", h.List)
 	mux.HandleFunc("POST /products", h.Create)
 	mux.HandleFunc("GET /products/{id}", h.GetByID)
 	mux.HandleFunc("PUT /products/{id}", h.Update)
 	mux.HandleFunc("DELETE /products/{id}", h.Delete)
-	//huy
 	mux.HandleFunc("POST /products/{id}/image", h.UploadImage)
 	mux.HandleFunc("GET /products/images/{filename}", h.ServeImage)
 }
@@ -177,6 +179,33 @@ func (h *ProductHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
 func (h *ProductHandler) ServeImage(w http.ResponseWriter, r *http.Request) {
 	filename := r.PathValue("filename")
 	http.ServeFile(w, r, filepath.Join(h.uploadDir, filename))
+}
+
+func (h *ProductHandler) GetStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.svc.GetStats(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJson(w, http.StatusOK, stats)
+}
+
+func (h *ProductHandler) GetLowStock(w http.ResponseWriter, r *http.Request) {
+	products, err := h.svc.GetLowStock(r.Context(), 10)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJson(w, http.StatusOK, products)
+}
+
+func (h *ProductHandler) GetCategories(w http.ResponseWriter, r *http.Request) {
+	categories, err := h.svc.GetCategories(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJson(w, http.StatusOK, categories)
 }
 
 // Utils

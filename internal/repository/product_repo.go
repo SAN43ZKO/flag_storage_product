@@ -167,3 +167,32 @@ func (r *ProductRepo) Delete(ctx context.Context, id int64) error {
 	}
 	return nil
 }
+
+func (r *ProductRepo) Count(ctx context.Context) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM products`).Scan(&count)
+	return count, err
+}
+
+func (r *ProductRepo) CountCategories(ctx context.Context) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(DISTINCT category) FROM products WHERE category IS NOT NULL AND category <> ''`).Scan(&count)
+	return count, err
+}
+
+func (r *ProductRepo) LowStock(ctx context.Context, threshold int) ([]model.Product, error) {
+	rows, err := r.pool.Query(ctx, `SELECT id, name, sku, quantity, category, unit, image_path, created_at, updated_at FROM products WHERE quantity < $1 ORDER BY quantity`, threshold)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var products []model.Product
+	for rows.Next() {
+		var p model.Product
+		if err := rows.Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		products = append(products, p)
+	}
+	return products, nil
+}

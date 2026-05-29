@@ -87,3 +87,45 @@ func (s *ProductService) Delete(ctx context.Context, id int64) error {
 	}
 	return err
 }
+
+func (s *ProductService) GetStats(ctx context.Context) (map[string]int, error) {
+	total, err := s.repo.Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+	categories, err := s.repo.CountCategories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	low, err := s.repo.LowStock(ctx, 10)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]int{
+		"total_products":   total,
+		"total_categories": categories,
+		"low_stock_count":  len(low),
+	}, nil
+}
+
+func (s *ProductService) GetCategories(ctx context.Context) ([]string, error) {
+	products, err := s.repo.List(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	cats := make(map[string]struct{})
+	for _, p := range products {
+		if p.Category != nil && *p.Category != "" {
+			cats[*p.Category] = struct{}{}
+		}
+	}
+	var res []string
+	for c := range cats {
+		res = append(res, c)
+	}
+	return res, nil
+}
+
+func (s *ProductService) GetLowStock(ctx context.Context, threshold int) ([]model.Product, error) {
+	return s.repo.LowStock(ctx, threshold)
+}
