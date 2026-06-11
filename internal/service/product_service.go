@@ -129,3 +129,7 @@ func (s *ProductService) GetCategories(ctx context.Context) ([]string, error) {
 func (s *ProductService) GetLowStock(ctx context.Context, threshold int) ([]model.Product, error) {
 	return s.repo.LowStock(ctx, threshold)
 }
+
+func (s *ProductService) GetUnits(ctx context.Context) ([]string, error) {
+	return s.repo.DistinctUnits(ctx)
+}

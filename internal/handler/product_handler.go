@@ -28,6 +28,7 @@ func (h *ProductHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stats", h.GetStats)
 	mux.HandleFunc("GET /api/products/low-stock", h.GetLowStock)
 	mux.HandleFunc("GET /api/categories", h.GetCategories)
+	mux.HandleFunc("GET /api/units", h.GetUnits)
 	mux.HandleFunc("GET /products", h.List)
 	mux.HandleFunc("POST /products", h.Create)
 	mux.HandleFunc("GET /products/{id}", h.GetByID)
@@ -206,6 +207,15 @@ func (h *ProductHandler) GetCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJson(w, http.StatusOK, categories)
+}
+
+func (h *ProductHandler) GetUnits(w http.ResponseWriter, r *http.Request) {
+	units, err := h.svc.GetUnits(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJson(w, http.StatusOK, units)
 }
 
 // Utils

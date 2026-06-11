@@ -196,3 +196,20 @@ func (r *ProductRepo) LowStock(ctx context.Context, threshold int) ([]model.Prod
 	}
 	return products, nil
 }
+
+func (r *ProductRepo) DistinctUnits(ctx context.Context) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `SELECT DISTINCT unit FROM products WHERE unit IS NOT NULL AND unit <> '' ORDER BY unit`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var units []string
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		units = append(units, u)
+	}
+	return units, rows.Err()
+}
