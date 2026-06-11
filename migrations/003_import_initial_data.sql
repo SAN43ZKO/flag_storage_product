@@ -1,6 +1,3 @@
--- Очищаем таблицу перед заполнением
-TRUNCATE products RESTART IDENTITY;
-
 INSERT INTO products (name, sku, quantity, unit, category, created_at, updated_at) VALUES
 -- Брелоки
 ('Брелок футболка акрил, красный', NULL, 300, NULL, 'Брелоки', NOW(), NOW()),
