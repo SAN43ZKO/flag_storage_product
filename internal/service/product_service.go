@@ -73,7 +73,7 @@ func (s *ProductService) UpdateImage(ctx context.Context, id int64, filename str
 		Quantity:  product.Quantity,
 		Category:  product.Category,
 		Unit:      product.Unit,
-		ImagePath: filename,
+		ImagePath: &filename,
 	}
 	log.Printf("Calling Update with ImagePath=%q", filename)
 	_, err = s.repo.Update(ctx, id, req)
@@ -132,4 +132,16 @@ func (s *ProductService) GetLowStock(ctx context.Context, threshold int) ([]mode
 
 func (s *ProductService) GetUnits(ctx context.Context) ([]string, error) {
 	return s.repo.DistinctUnits(ctx)
+}
+
+func (s *ProductService) FindBySKU(ctx context.Context, sku string) (model.Product, error) {
+	return s.repo.FindBySKU(ctx, sku)
+}
+
+func (s *ProductService) FindByName(ctx context.Context, name string) (model.Product, error) {
+	return s.repo.FindByName(ctx, name)
+}
+
+func (s *ProductService) Autocomplete(ctx context.Context, query string) ([]model.ProductAutocomplete, error) {
+	return s.repo.Autocomplete(ctx, query)
 }

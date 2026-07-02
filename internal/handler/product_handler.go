@@ -9,15 +9,34 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"storage/internal/model"
-	"storage/internal/service"
 	"strconv"
 	"time"
+
+	"storage/internal/model"
+	"storage/internal/service"
 )
 
 type ProductHandler struct {
 	svc       *service.ProductService
 	uploadDir string
+}
+
+type ReceiptItem struct {
+	SKU      string `json:"sku"`
+	Name     string `json:"name"`
+	Quantity int    `json:"quantity"`
+	Category string `json:"category,omitempty"`
+	Unit     string `json:"unit,omitempty"`
+}
+
+type ReceiptRequest struct {
+	Items []ReceiptItem `json:"items"`
+}
+
+type ReceiptResult struct {
+	Created int      `json:"created"`
+	Updated int      `json:"updated"`
+	Errors  []string `json:"errors,omitempty"`
 }
 
 func NewProductHundler(svc *service.ProductService, uploadDir string) *ProductHandler {
@@ -36,6 +55,8 @@ func (h *ProductHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /products/{id}", h.Delete)
 	mux.HandleFunc("POST /products/{id}/image", h.UploadImage)
 	mux.HandleFunc("GET /products/images/{filename}", h.ServeImage)
+	mux.HandleFunc("POST /products/receipt", h.ProcessReceipt)
+	mux.HandleFunc("GET /products/autocomplete", h.Autocomplete)
 }
 
 func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -216,6 +237,107 @@ func (h *ProductHandler) GetUnits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJson(w, http.StatusOK, units)
+}
+
+func (h *ProductHandler) ProcessReceipt(w http.ResponseWriter, r *http.Request) {
+	var req ReceiptRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "неверный формат запроса")
+		return
+	}
+
+	var result ReceiptResult
+	for _, item := range req.Items {
+		if item.Quantity <= 0 {
+			result.Errors = append(result.Errors, "Пропущена позиция: количество должно быть положительным")
+			continue
+		}
+
+		var existing *model.Product
+
+		// Ищем по SKU, если он указан
+		if item.SKU != "" {
+			p, err := h.svc.FindBySKU(r.Context(), item.SKU)
+			if err == nil {
+				existing = &p
+			}
+		}
+
+		// Если не нашли по SKU, ищем по названию
+		if existing == nil && item.Name != "" {
+			p, err := h.svc.FindByName(r.Context(), item.Name)
+			if err == nil {
+				existing = &p
+			}
+		}
+
+		if existing != nil {
+			newQty := existing.Quantity + item.Quantity
+			req := model.CreateProductRequest{
+				Name:     existing.Name,
+				SKU:      existing.SKU,
+				Quantity: newQty,
+			}
+			// Приоритет новым значениям из формы
+			if item.Category != "" {
+				req.Category = &item.Category
+			} else if existing.Category != nil {
+				req.Category = existing.Category
+			}
+			if item.Unit != "" {
+				req.Unit = &item.Unit
+			} else if existing.Unit != nil {
+				req.Unit = existing.Unit
+			}
+			if existing.ImagePath != nil {
+				req.ImagePath = existing.ImagePath
+			}
+			if _, err := h.svc.Update(r.Context(), existing.ID, req); err != nil {
+				result.Errors = append(result.Errors, "Ошибка обновления товара: "+err.Error())
+				continue
+			}
+			result.Updated++
+		} else {
+			// Создание нового товара
+			if item.SKU == "" && item.Name == "" {
+				result.Errors = append(result.Errors, "Не удалось создать товар: укажите артикул или название")
+				continue
+			}
+			createReq := model.CreateProductRequest{
+				Name:     &item.Name,
+				SKU:      &item.SKU,
+				Quantity: item.Quantity,
+			}
+			if item.Category != "" {
+				createReq.Category = &item.Category
+			}
+			if item.Unit != "" {
+				createReq.Unit = &item.Unit
+			}
+			if _, err := h.svc.Create(r.Context(), createReq); err != nil {
+				result.Errors = append(result.Errors, "Ошибка создания товара: "+err.Error())
+				continue
+			}
+			result.Created++
+		}
+	}
+
+	writeJson(w, http.StatusOK, result)
+}
+
+func (h *ProductHandler) Autocomplete(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	if len(query) < 2 {
+		writeJson(w, http.StatusOK, []model.ProductAutocomplete{})
+		return
+	}
+	items, err := h.svc.Autocomplete(r.Context(), query)
+	if err != nil {
+		log.Printf("autocomplete error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJson(w, http.StatusOK, items)
 }
 
 // Utils

@@ -123,7 +123,7 @@ func (r *ProductRepo) List(ctx context.Context, search string) ([]model.Product,
 
 // Updates all fields of the product without id and created_at
 func (r *ProductRepo) Update(ctx context.Context, id int64, req model.CreateProductRequest) (model.Product, error) {
-	log.Printf("Update repo called: id=%d, ImagePath=%q", id, req.ImagePath)
+	log.Printf("Update repo called: id=%d, ImagePath=%v", id, req.ImagePath)
 	var p model.Product
 	now := time.Now().UTC()
 	const updateQuery = `
@@ -212,4 +212,58 @@ func (r *ProductRepo) DistinctUnits(ctx context.Context) ([]string, error) {
 		units = append(units, u)
 	}
 	return units, rows.Err()
+}
+
+func (r *ProductRepo) Autocomplete(ctx context.Context, query string) ([]model.ProductAutocomplete, error) {
+	like := "%" + query + "%"
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, COALESCE(sku, ''), COALESCE(name, ''), COALESCE(category, ''), COALESCE(unit, '')
+         FROM products
+         WHERE name ILIKE $1 OR sku ILIKE $2
+         ORDER BY name
+         LIMIT 10`, like, like)
+	if err != nil {
+		return nil, fmt.Errorf("autocomplete: %w", err)
+	}
+	defer rows.Close()
+
+	var items []model.ProductAutocomplete
+	for rows.Next() {
+		var item model.ProductAutocomplete
+		if err := rows.Scan(&item.ID, &item.SKU, &item.Name, &item.Category, &item.Unit); err != nil {
+			return nil, fmt.Errorf("scan autocomplete: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *ProductRepo) FindBySKU(ctx context.Context, sku string) (model.Product, error) {
+	var p model.Product
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, name, sku, quantity, category, unit, image_path, created_at, updated_at
+         FROM products WHERE sku = $1`, sku,
+	).Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return model.Product{}, fmt.Errorf("product not found")
+		}
+		return model.Product{}, fmt.Errorf("find by sku: %w", err)
+	}
+	return p, nil
+}
+
+func (r *ProductRepo) FindByName(ctx context.Context, name string) (model.Product, error) {
+	var p model.Product
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, name, sku, quantity, category, unit, image_path, created_at, updated_at
+         FROM products WHERE name = $1`, name,
+	).Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return model.Product{}, fmt.Errorf("product not found")
+		}
+		return model.Product{}, fmt.Errorf("find by name: %w", err)
+	}
+	return p, nil
 }
