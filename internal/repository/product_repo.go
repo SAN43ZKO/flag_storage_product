@@ -32,11 +32,12 @@ func (r *ProductRepo) Create(ctx context.Context, req model.CreateProductRequest
 		unit,
 		category,
 		image_path,
+		reserved,
 		created_at,
 		updated_at)
 	VALUES($1, $2, $3, $4, $5, $6, $7, $8)
 	RETURNING id, name, sku, quantity, unit, category, image_path, created_at, updated_at`
-	err := r.pool.QueryRow(ctx, createQuery, req.Name, req.SKU, req.Quantity, req.Unit, req.Category, req.ImagePath, now, now).Scan(
+	err := r.pool.QueryRow(ctx, createQuery, req.Name, req.SKU, req.Quantity, req.Unit, req.Category, req.ImagePath, req.Reserved, now, now).Scan(
 		&p.ID,
 		&p.Name,
 		&p.SKU,
@@ -44,6 +45,7 @@ func (r *ProductRepo) Create(ctx context.Context, req model.CreateProductRequest
 		&p.Unit,
 		&p.Category,
 		&p.ImagePath,
+		&p.Reserved,
 		&p.CreatedAt,
 		&p.UpdatedAt)
 	if err != nil {
@@ -64,6 +66,7 @@ func (r *ProductRepo) GetByID(ctx context.Context, id int64) (model.Product, err
 	unit,
 	category,
 	image_path,
+	reserved,
 	created_at,
 	updated_at
 	FROM products WHERE id = $1`
@@ -75,6 +78,7 @@ func (r *ProductRepo) GetByID(ctx context.Context, id int64) (model.Product, err
 		&p.Unit,
 		&p.Category,
 		&p.ImagePath,
+		&p.Reserved,
 		&p.CreatedAt,
 		&p.UpdatedAt)
 	if err != nil {
@@ -94,12 +98,12 @@ func (r *ProductRepo) List(ctx context.Context, search string) ([]model.Product,
 
 	if search == "" {
 		rows, err = r.pool.Query(ctx,
-			`SELECT id, name, sku, quantity, unit, category, image_path, created_at, updated_at
+			`SELECT id, name, sku, quantity, unit, category, image_path, reserved, created_at, updated_at
 		FROM products ORDER BY id`)
 	} else {
 		like := "%" + search + "%"
 		rows, err = r.pool.Query(ctx,
-			`SELECT id, name, sku, quantity, unit, category, image_path, created_at, updated_at
+			`SELECT id, name, sku, quantity, unit, category, image_path, reserved, created_at, updated_at
 		FROM products
 		WHERE name ILIKE $1 OR sku ILIKE $2
 		ORDER BY id`, like, like)
@@ -113,7 +117,7 @@ func (r *ProductRepo) List(ctx context.Context, search string) ([]model.Product,
 	var products []model.Product
 	for rows.Next() {
 		var p model.Product
-		if err := rows.Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Unit, &p.Category, &p.ImagePath, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Unit, &p.Category, &p.ImagePath, &p.Reserved, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("List(2): scan product: %w", err)
 		}
 		products = append(products, p)
@@ -123,7 +127,7 @@ func (r *ProductRepo) List(ctx context.Context, search string) ([]model.Product,
 
 // Updates all fields of the product without id and created_at
 func (r *ProductRepo) Update(ctx context.Context, id int64, req model.CreateProductRequest) (model.Product, error) {
-	log.Printf("Update repo called: id=%d, ImagePath=%v", id, req.ImagePath)
+	log.Printf("Update repo called: id=%d, ImagePath=%v, reserved=%v", id, req.ImagePath, req.Reserved)
 	var p model.Product
 	now := time.Now().UTC()
 	const updateQuery = `
@@ -134,10 +138,11 @@ func (r *ProductRepo) Update(ctx context.Context, id int64, req model.CreateProd
 		unit=$4,
 		category=$5,
 		image_path=$6,
-		updated_at=$7
-	WHERE id=$8
-	RETURNING id, name, sku, quantity, unit, category, image_path, created_at, updated_at`
-	err := r.pool.QueryRow(ctx, updateQuery, req.Name, req.SKU, req.Quantity, req.Unit, req.Category, req.ImagePath, now, id).Scan(
+		reserved=$7,
+		updated_at=$8
+	WHERE id=$9
+	RETURNING id, name, sku, quantity, unit, category, image_path, reserved, created_at, updated_at`
+	err := r.pool.QueryRow(ctx, updateQuery, req.Name, req.SKU, req.Quantity, req.Unit, req.Category, req.ImagePath, req.Reserved, now, id).Scan(
 		&p.ID,
 		&p.Name,
 		&p.SKU,
@@ -145,6 +150,7 @@ func (r *ProductRepo) Update(ctx context.Context, id int64, req model.CreateProd
 		&p.Unit,
 		&p.Category,
 		&p.ImagePath,
+		&p.Reserved,
 		&p.CreatedAt,
 		&p.UpdatedAt)
 	if err != nil {
@@ -181,7 +187,7 @@ func (r *ProductRepo) CountCategories(ctx context.Context) (int, error) {
 }
 
 func (r *ProductRepo) LowStock(ctx context.Context, threshold int) ([]model.Product, error) {
-	rows, err := r.pool.Query(ctx, `SELECT id, name, sku, quantity, category, unit, image_path, created_at, updated_at FROM products WHERE quantity < $1 ORDER BY quantity`, threshold)
+	rows, err := r.pool.Query(ctx, `SELECT id, name, sku, quantity, category, unit, image_path, reserved created_at, updated_at FROM products WHERE quantity < $1 ORDER BY quantity`, threshold)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +195,7 @@ func (r *ProductRepo) LowStock(ctx context.Context, threshold int) ([]model.Prod
 	var products []model.Product
 	for rows.Next() {
 		var p model.Product
-		if err := rows.Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.Reserved, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		products = append(products, p)
@@ -241,9 +247,9 @@ func (r *ProductRepo) Autocomplete(ctx context.Context, query string) ([]model.P
 func (r *ProductRepo) FindBySKU(ctx context.Context, sku string) (model.Product, error) {
 	var p model.Product
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, name, sku, quantity, category, unit, image_path, created_at, updated_at
+		`SELECT id, name, sku, quantity, category, unit, image_path, reserved, created_at, updated_at
          FROM products WHERE sku = $1`, sku,
-	).Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.CreatedAt, &p.UpdatedAt)
+	).Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.Reserved, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return model.Product{}, fmt.Errorf("product not found")
@@ -256,9 +262,9 @@ func (r *ProductRepo) FindBySKU(ctx context.Context, sku string) (model.Product,
 func (r *ProductRepo) FindByName(ctx context.Context, name string) (model.Product, error) {
 	var p model.Product
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, name, sku, quantity, category, unit, image_path, created_at, updated_at
+		`SELECT id, name, sku, quantity, category, unit, image_path, reserved, created_at, updated_at
          FROM products WHERE name = $1`, name,
-	).Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.CreatedAt, &p.UpdatedAt)
+	).Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.Reserved, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return model.Product{}, fmt.Errorf("product not found")

@@ -277,6 +277,7 @@ func (h *ProductHandler) ProcessReceipt(w http.ResponseWriter, r *http.Request) 
 				Name:     existing.Name,
 				SKU:      existing.SKU,
 				Quantity: newQty,
+				Reserved: existing.Reserved,
 			}
 			// Приоритет новым значениям из формы
 			if item.Category != "" {

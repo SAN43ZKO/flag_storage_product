@@ -10,6 +10,7 @@ type Product struct {
 	Unit      *string   `json:"unit,omitempty"`
 	Category  *string   `json:"category,omitempty"`
 	ImagePath *string   `json:"image_path,omitempty"`
+	Reserved  int       `json:"reserved"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -21,6 +22,7 @@ type CreateProductRequest struct {
 	Unit      *string `json:"unit,omitempty"`
 	Category  *string `json:"category,omitempty"`
 	ImagePath *string `json:"image_path,omitempty"`
+	Reserved  int     `json:"reserved"`
 }
 
 type ProductAutocomplete struct {

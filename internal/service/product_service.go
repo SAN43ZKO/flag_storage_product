@@ -74,6 +74,7 @@ func (s *ProductService) UpdateImage(ctx context.Context, id int64, filename str
 		Category:  product.Category,
 		Unit:      product.Unit,
 		ImagePath: &filename,
+		Reserved:  product.Reserved,
 	}
 	log.Printf("Calling Update with ImagePath=%q", filename)
 	_, err = s.repo.Update(ctx, id, req)
