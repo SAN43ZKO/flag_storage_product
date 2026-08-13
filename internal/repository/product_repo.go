@@ -187,7 +187,7 @@ func (r *ProductRepo) CountCategories(ctx context.Context) (int, error) {
 }
 
 func (r *ProductRepo) LowStock(ctx context.Context, threshold int) ([]model.Product, error) {
-	rows, err := r.pool.Query(ctx, `SELECT id, name, sku, quantity, category, unit, image_path, reserved created_at, updated_at FROM products WHERE quantity < $1 ORDER BY quantity`, threshold)
+	rows, err := r.pool.Query(ctx, `SELECT id, name, sku, quantity, category, unit, image_path, reserved, created_at, updated_at FROM products WHERE quantity < $1 ORDER BY quantity`, threshold)
 	if err != nil {
 		return nil, err
 	}
