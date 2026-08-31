@@ -48,13 +48,16 @@ func main() {
 	}
 
 	productRepo := repository.NewProductRepo(pool)
-	productSvc := service.NewProductService(productRepo)
+	changeRepo := repository.NewProductChangeRepo(pool)
+	changeSvc := service.NewProductChangeService(changeRepo, productRepo)
+	productSvc := service.NewProductService(productRepo, changeSvc)
 
 	uploadDir := "./uploads/products"
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		log.Fatalf("create upload dir: %v", err)
 	}
 	productHandler := handler.NewProductHundler(productSvc, uploadDir)
+	changeHandler := handler.NewProductChangeHandler(changeSvc)
 
 	mux := http.NewServeMux()
 	productHandler.RegisterRoutes(mux)
@@ -64,6 +67,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+	mux.HandleFunc("GET /product-changes", changeHandler.List)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

@@ -93,8 +93,10 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 	search := r.URL.Query().Get("search")
+	category := r.URL.Query().Get("category")
+	sortByQty := r.URL.Query().Get("sort")
 
-	product, err := h.svc.List(r.Context(), search)
+	product, err := h.svc.List(r.Context(), search, category, sortByQty)
 	if err != nil {
 		log.Printf("List error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")

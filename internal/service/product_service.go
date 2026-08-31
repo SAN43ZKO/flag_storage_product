@@ -6,6 +6,7 @@ import (
 	"log"
 	"storage/internal/model"
 	"storage/internal/repository"
+	"strconv"
 	"strings"
 )
 
@@ -17,11 +18,12 @@ var (
 )
 
 type ProductService struct {
-	repo *repository.ProductRepo
+	repo      *repository.ProductRepo
+	changeSvc *ProductChangeService
 }
 
-func NewProductService(repo *repository.ProductRepo) *ProductService {
-	return &ProductService{repo: repo}
+func NewProductService(repo *repository.ProductRepo, changeSvc *ProductChangeService) *ProductService {
+	return &ProductService{repo: repo, changeSvc: changeSvc}
 }
 
 func (s *ProductService) Validate(req model.CreateProductRequest) error {
@@ -35,7 +37,14 @@ func (s *ProductService) Create(ctx context.Context, req model.CreateProductRequ
 	if err := s.Validate(req); err != nil {
 		return model.Product{}, err
 	}
-	return s.repo.Create(ctx, req)
+	product, err := s.repo.Create(ctx, req)
+	if err != nil {
+		return model.Product{}, err
+	}
+	if s.changeSvc != nil {
+		s.changeSvc.RecordFieldChange(ctx, product.ID, "created", nil, strPtr("created"))
+	}
+	return product, nil
 }
 
 func (s *ProductService) GetByID(ctx context.Context, id int64) (model.Product, error) {
@@ -46,19 +55,25 @@ func (s *ProductService) GetByID(ctx context.Context, id int64) (model.Product, 
 	return p, err
 }
 
-func (s *ProductService) List(ctx context.Context, search string) ([]model.Product, error) {
-	return s.repo.List(ctx, search)
+func (s *ProductService) List(ctx context.Context, search string, category string, sortByQty string) ([]model.Product, error) {
+	return s.repo.List(ctx, search, category, sortByQty)
 }
 
 func (s *ProductService) Update(ctx context.Context, id int64, req model.CreateProductRequest) (model.Product, error) {
 	if err := s.Validate(req); err != nil {
 		return model.Product{}, err
 	}
-	p, err := s.repo.Update(ctx, id, req)
-	if err != nil && strings.Contains(err.Error(), "not found") {
+	oldProduct, err := s.repo.GetByID(ctx, id)
+	if err != nil {
 		return model.Product{}, ErrProductNotFound
 	}
-	return p, err
+	updatedProduct, err := s.repo.Update(ctx, id, req)
+	if err != nil {
+		return model.Product{}, err
+	}
+
+	s.recoredChange(ctx, oldProduct, updatedProduct)
+	return updatedProduct, nil
 }
 
 func (s *ProductService) UpdateImage(ctx context.Context, id int64, filename string) error {
@@ -82,11 +97,15 @@ func (s *ProductService) UpdateImage(ctx context.Context, id int64, filename str
 }
 
 func (s *ProductService) Delete(ctx context.Context, id int64) error {
-	err := s.repo.Delete(ctx, id)
-	if err != nil && strings.Contains(err.Error(), "not found") {
-		return ErrProductNotFound
+	oldProduct, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
 	}
-	return err
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	s.changeSvc.RecordFieldChange(ctx, id, "deleted", strPtr(*oldProduct.Name), nil)
+	return nil
 }
 
 func (s *ProductService) GetStats(ctx context.Context) (map[string]int, error) {
@@ -110,21 +129,22 @@ func (s *ProductService) GetStats(ctx context.Context) (map[string]int, error) {
 }
 
 func (s *ProductService) GetCategories(ctx context.Context) ([]string, error) {
-	products, err := s.repo.List(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-	cats := make(map[string]struct{})
-	for _, p := range products {
-		if p.Category != nil && *p.Category != "" {
-			cats[*p.Category] = struct{}{}
-		}
-	}
-	var res []string
-	for c := range cats {
-		res = append(res, c)
-	}
-	return res, nil
+	return s.repo.DistinctCategories(ctx)
+	// products, err := s.repo.List(ctx, "", "", "")
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// cats := make(map[string]struct{})
+	// for _, p := range products {
+	// 	if p.Category != nil && *p.Category != "" {
+	// 		cats[*p.Category] = struct{}{}
+	// 	}
+	// }
+	// var res []string
+	// for c := range cats {
+	// 	res = append(res, c)
+	// }
+	// return res, nil
 }
 
 func (s *ProductService) GetLowStock(ctx context.Context, threshold int) ([]model.Product, error) {
@@ -146,3 +166,41 @@ func (s *ProductService) FindByName(ctx context.Context, name string) (model.Pro
 func (s *ProductService) Autocomplete(ctx context.Context, query string) ([]model.ProductAutocomplete, error) {
 	return s.repo.Autocomplete(ctx, query)
 }
+
+func (s *ProductService) recoredChange(ctx context.Context, oldProd, newProd model.Product) {
+	equalPtr := func(a, b *string) bool {
+		if a == nil && b == nil {
+			return true
+		}
+		if a == nil {
+			return *b == ""
+		}
+		if b == nil {
+			return *a == ""
+		}
+		return *a == *b
+	}
+	compare := func(field string, oldVal, newVal *string) {
+		if equalPtr(oldVal, newVal) {
+			return
+		}
+		_ = s.changeSvc.RecordFieldChange(ctx, newProd.ID, field, oldVal, newVal)
+	}
+
+	compare("name", oldProd.Name, newProd.Name)
+	compare("sku", oldProd.SKU, newProd.SKU)
+	compare("category", oldProd.Category, newProd.Category)
+	compare("unit", oldProd.Unit, newProd.Unit)
+	compare("image_path", oldProd.ImagePath, newProd.ImagePath)
+
+	oldQty := intToStrPtr(oldProd.Quantity)
+	newQty := intToStrPtr(newProd.Quantity)
+	compare("quantity", oldQty, newQty)
+
+	oldRes := intToStrPtr(oldProd.Reserved)
+	newRes := intToStrPtr(newProd.Reserved)
+	compare("reserved", oldRes, newRes)
+}
+
+func strPtr(s string) *string   { return &s }
+func intToStrPtr(i int) *string { s := strconv.Itoa(i); return &s }

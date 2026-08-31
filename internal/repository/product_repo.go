@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"storage/internal/model"
@@ -35,7 +36,7 @@ func (r *ProductRepo) Create(ctx context.Context, req model.CreateProductRequest
 		reserved,
 		created_at,
 		updated_at)
-	VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+	VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	RETURNING id, name, sku, quantity, unit, category, image_path, created_at, updated_at`
 	err := r.pool.QueryRow(ctx, createQuery, req.Name, req.SKU, req.Quantity, req.Unit, req.Category, req.ImagePath, req.Reserved, now, now).Scan(
 		&p.ID,
@@ -90,24 +91,50 @@ func (r *ProductRepo) GetByID(ctx context.Context, id int64) (model.Product, err
 	return p, nil
 }
 
-func (r *ProductRepo) List(ctx context.Context, search string) ([]model.Product, error) {
-	var (
-		rows pgx.Rows
-		err  error
-	)
+func (r *ProductRepo) List(ctx context.Context, search string, category string, sortByQty string) ([]model.Product, error) {
+	query := `SELECT id, name, sku, quantity, category, unit, image_path, reserved, created_at, updated_at FROM products`
+	args := []interface{}{}
+	conditions := []string{}
 
-	if search == "" {
-		rows, err = r.pool.Query(ctx,
-			`SELECT id, name, sku, quantity, unit, category, image_path, reserved, created_at, updated_at
-		FROM products ORDER BY id`)
-	} else {
+	if search != "" {
 		like := "%" + search + "%"
-		rows, err = r.pool.Query(ctx,
-			`SELECT id, name, sku, quantity, unit, category, image_path, reserved, created_at, updated_at
-		FROM products
-		WHERE name ILIKE $1 OR sku ILIKE $2
-		ORDER BY id`, like, like)
+		args = append(args, like, like)
+		conditions = append(conditions, "(name ILIKE $1 OR sku ILIKE $2)")
 	}
+	if category != "" {
+		args = append(args, category)
+		conditions = append(conditions, fmt.Sprintf("category = $%d", len(args)))
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	if sortByQty == "asc" {
+		query += " ORDER BY quantity ASC"
+	} else if sortByQty == "desc" {
+		query += " ORDER BY quantity DESC"
+	} else {
+		query += " ORDER BY id"
+	}
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	// var (
+	// 	rows pgx.Rows
+	// 	err  error
+	// )
+
+	// if search == "" {
+	// 	rows, err = r.pool.Query(ctx,
+	// 		`SELECT id, name, sku, quantity, unit, category, image_path, reserved, created_at, updated_at
+	// 	FROM products ORDER BY id`)
+	// } else {
+	// 	like := "%" + search + "%"
+	// 	rows, err = r.pool.Query(ctx,
+	// 		`SELECT id, name, sku, quantity, unit, category, image_path, reserved, created_at, updated_at
+	// 	FROM products
+	// 	WHERE name ILIKE $1 OR sku ILIKE $2
+	// 	ORDER BY id`, like, like)
+	// }
 
 	if err != nil {
 		return nil, fmt.Errorf("list pruducts: %w", err)
@@ -117,7 +144,7 @@ func (r *ProductRepo) List(ctx context.Context, search string) ([]model.Product,
 	var products []model.Product
 	for rows.Next() {
 		var p model.Product
-		if err := rows.Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Unit, &p.Category, &p.ImagePath, &p.Reserved, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.Reserved, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("List(2): scan product: %w", err)
 		}
 		products = append(products, p)
@@ -201,6 +228,26 @@ func (r *ProductRepo) LowStock(ctx context.Context, threshold int) ([]model.Prod
 		products = append(products, p)
 	}
 	return products, nil
+}
+
+func (r *ProductRepo) DistinctCategories(ctx context.Context) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT DISTINCT category FROM products
+         WHERE category IS NOT NULL AND category <> ''
+         ORDER BY category`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var categories []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, err
+		}
+		categories = append(categories, c)
+	}
+	return categories, rows.Err()
 }
 
 func (r *ProductRepo) DistinctUnits(ctx context.Context) ([]string, error) {
