@@ -37,7 +37,7 @@ func (r *ProductRepo) Create(ctx context.Context, req model.CreateProductRequest
 		created_at,
 		updated_at)
 	VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	RETURNING id, name, sku, quantity, unit, category, image_path, created_at, updated_at`
+	RETURNING id, name, sku, quantity, unit, category, image_path, reserved, created_at, updated_at`
 	err := r.pool.QueryRow(ctx, createQuery, req.Name, req.SKU, req.Quantity, req.Unit, req.Category, req.ImagePath, req.Reserved, now, now).Scan(
 		&p.ID,
 		&p.Name,
