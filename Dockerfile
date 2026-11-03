@@ -7,7 +7,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /server ./cmd/server
 
 FROM alpine:3.21
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata font-dejavu
 RUN mkdir -p /app/uploads/products && chmod 777 /app/uploads/products
 COPY --from=builder /server /server
 COPY migrations /migrations

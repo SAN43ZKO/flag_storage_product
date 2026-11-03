@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,8 @@ import (
 
 	"storage/internal/model"
 	"storage/internal/service"
+
+	"github.com/signintech/gopdf"
 )
 
 type ProductHandler struct {
@@ -50,6 +53,7 @@ func (h *ProductHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/categories", h.GetCategories)
 	mux.HandleFunc("GET /api/units", h.GetUnits)
 	mux.HandleFunc("POST /products/receipt", h.ProcessReceipt)
+	mux.HandleFunc("POST /products/receipt/pdf", h.GenerateReceiptPDF)
 	mux.HandleFunc("GET /products/autocomplete", h.Autocomplete)
 	mux.HandleFunc("GET /products/images/{filename}", h.ServeImage)
 	mux.HandleFunc("GET /products", h.List)
@@ -347,6 +351,156 @@ func (h *ProductHandler) Autocomplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJson(w, http.StatusOK, items)
+}
+
+func findFont(candidates []string) string {
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
+func (h *ProductHandler) GenerateReceiptPDF(w http.ResponseWriter, r *http.Request) {
+	var req ReceiptRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "неверный формат запроса")
+		return
+	}
+	if len(req.Items) == 0 {
+		writeError(w, http.StatusBadRequest, "нет позиций для печати")
+		return
+	}
+
+	pdf := gopdf.GoPdf{}
+	pdf.Start(gopdf.Config{PageSize: *gopdf.PageSizeA4})
+	pdf.AddPage()
+
+	regularFont := findFont([]string{
+		"/usr/share/fonts/dejavu/DejaVuSans.ttf",
+		"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+		"/usr/share/fonts/TTF/DejaVuSans.ttf",
+		"/usr/share/fonts/TTF/dejavu/DejaVuSans.ttf",
+	})
+	boldFont := findFont([]string{
+		"/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+		"/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+		"/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+		"/usr/share/fonts/TTF/dejavu/DejaVuSans-Bold.ttf",
+	})
+
+	if regularFont == "" || boldFont == "" {
+		log.Printf("GenerateReceiptPDF: DejaVu fonts not found")
+		writeError(w, http.StatusInternalServerError, "fonts not found")
+		return
+	}
+
+	if err := pdf.AddTTFFont("dejavu", regularFont); err != nil {
+		log.Printf("GenerateReceiptPDF: font regular: %v", err)
+		writeError(w, http.StatusInternalServerError, "font error")
+		return
+	}
+	if err := pdf.AddTTFFont("dejavu-bold", boldFont); err != nil {
+		log.Printf("GenerateReceiptPDF: font bold: %v", err)
+		writeError(w, http.StatusInternalServerError, "font error")
+		return
+	}
+
+	// Заголовок
+	pdf.SetFont("dejavu-bold", "", 16)
+	pdf.SetXY(40, 40)
+	pdf.CellWithOption(&gopdf.Rect{W: 515, H: 25},
+		"Перемещение на склад",
+		gopdf.CellOption{Align: gopdf.Left | gopdf.Middle})
+
+	// Дата
+	pdf.SetFont("dejavu", "", 10)
+	pdf.SetXY(40, 70)
+	pdf.CellWithOption(&gopdf.Rect{W: 515, H: 15},
+		"Дата: "+time.Now().Format("02.01.2006 15:04"),
+		gopdf.CellOption{Align: gopdf.Left | gopdf.Middle})
+
+	// Таблица
+	const (
+		tableX = 40.0
+		tableW = 420.0
+		rowH   = 18.0
+	)
+	colWidths := []float64{50, 190, 90, 50, 40}
+	headers := []string{"Артикул", "Наименование", "Категория", "Кол-во", "Ед."}
+
+	startY := 100.0
+	pdf.SetFont("dejavu-bold", "", 10)
+	x := tableX
+	for i, h := range headers {
+		pdf.SetXY(x, startY)
+		pdf.CellWithOption(&gopdf.Rect{W: colWidths[i], H: rowH}, h,
+			gopdf.CellOption{Align: gopdf.Left | gopdf.Middle})
+		x += colWidths[i]
+	}
+
+	y := startY + rowH
+	pdf.Line(tableX, y, tableX+tableW, y)
+
+	pdf.SetFont("dejavu", "", 9)
+	for _, item := range req.Items {
+		y += rowH
+		if y > 750 {
+			pdf.AddPage()
+			y = 40
+		}
+
+		displayName := item.Name
+		if displayName == "" {
+			displayName = item.SKU
+		}
+		if len(displayName) > 40 {
+			displayName = displayName[:40] + "…"
+		}
+
+		row := []string{
+			item.SKU,
+			displayName,
+			item.Category,
+			strconv.Itoa(item.Quantity),
+			item.Unit,
+		}
+
+		x = tableX
+		for i, val := range row {
+			pdf.SetXY(x, y)
+			pdf.CellWithOption(&gopdf.Rect{W: colWidths[i], H: rowH}, val,
+				gopdf.CellOption{Align: gopdf.Left | gopdf.Middle})
+			x += colWidths[i]
+		}
+		pdf.Line(tableX, y+rowH, tableX+tableW, y+rowH)
+	}
+
+	// Итоги
+	total := 0
+	for _, item := range req.Items {
+		total += item.Quantity
+	}
+	y += rowH + 20
+
+	pdf.SetFont("dejavu", "", 11)
+	pdf.SetXY(40, y)
+	pdf.CellWithOption(&gopdf.Rect{W: 515, H: 20},
+		fmt.Sprintf("Всего позиций: %d, единиц: %d", len(req.Items), total),
+		gopdf.CellOption{Align: gopdf.Left | gopdf.Middle})
+
+	var buf bytes.Buffer
+	if _, err := pdf.WriteTo(&buf); err != nil {
+		log.Printf("GenerateReceiptPDF: write: %v", err)
+		writeError(w, http.StatusInternalServerError, "pdf write error")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition",
+		`attachment; filename="warehouse-transfer-`+time.Now().Format("20060102-150405")+`.pdf"`)
+	w.Write(buf.Bytes())
 }
 
 // Utils
