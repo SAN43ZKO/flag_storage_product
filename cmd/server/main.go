@@ -56,7 +56,7 @@ func main() {
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		log.Fatalf("create upload dir: %v", err)
 	}
-	productHandler := handler.NewProductHundler(productSvc, uploadDir)
+	productHandler := handler.NewProductHandler(productSvc, uploadDir)
 	changeHandler := handler.NewProductChangeHandler(changeSvc)
 
 	mux := http.NewServeMux()

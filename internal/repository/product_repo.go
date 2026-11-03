@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -12,6 +13,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// ErrNotFound — sentinel error for "record not found" cases.
+var ErrNotFound = errors.New("not found")
 
 type ProductRepo struct {
 	pool *pgxpool.Pool
@@ -84,7 +88,7 @@ func (r *ProductRepo) GetByID(ctx context.Context, id int64) (model.Product, err
 		&p.UpdatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return model.Product{}, fmt.Errorf("GetByID(1): product not found")
+			return model.Product{}, fmt.Errorf("GetByID(1): %w", ErrNotFound)
 		}
 		return model.Product{}, fmt.Errorf("GetByID(2): get product: %w", err)
 	}
@@ -182,7 +186,7 @@ func (r *ProductRepo) Update(ctx context.Context, id int64, req model.CreateProd
 		&p.UpdatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return model.Product{}, fmt.Errorf("Update(1): product not found")
+			return model.Product{}, fmt.Errorf("Update(1): %w", ErrNotFound)
 		}
 		return model.Product{}, fmt.Errorf("Update(2): update product: %w", err)
 	}
@@ -299,7 +303,7 @@ func (r *ProductRepo) FindBySKU(ctx context.Context, sku string) (model.Product,
 	).Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.Reserved, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return model.Product{}, fmt.Errorf("product not found")
+			return model.Product{}, ErrNotFound
 		}
 		return model.Product{}, fmt.Errorf("find by sku: %w", err)
 	}
@@ -314,7 +318,7 @@ func (r *ProductRepo) FindByName(ctx context.Context, name string) (model.Produc
 	).Scan(&p.ID, &p.Name, &p.SKU, &p.Quantity, &p.Category, &p.Unit, &p.ImagePath, &p.Reserved, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return model.Product{}, fmt.Errorf("product not found")
+			return model.Product{}, ErrNotFound
 		}
 		return model.Product{}, fmt.Errorf("find by name: %w", err)
 	}

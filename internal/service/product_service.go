@@ -7,7 +7,6 @@ import (
 	"storage/internal/model"
 	"storage/internal/repository"
 	"strconv"
-	"strings"
 )
 
 var (
@@ -42,14 +41,16 @@ func (s *ProductService) Create(ctx context.Context, req model.CreateProductRequ
 		return model.Product{}, err
 	}
 	if s.changeSvc != nil {
-		s.changeSvc.RecordFieldChange(ctx, product.ID, "created", nil, strPtr("created"))
+		if err := s.changeSvc.RecordFieldChange(ctx, product.ID, "created", nil, strPtr("created")); err != nil {
+			log.Printf("Create: failed to record change for product %d: %v", product.ID, err)
+		}
 	}
 	return product, nil
 }
 
 func (s *ProductService) GetByID(ctx context.Context, id int64) (model.Product, error) {
 	p, err := s.repo.GetByID(ctx, id)
-	if err != nil && strings.Contains(err.Error(), "not found") {
+	if errors.Is(err, repository.ErrNotFound) {
 		return model.Product{}, ErrProductNotFound
 	}
 	return p, err
@@ -65,7 +66,10 @@ func (s *ProductService) Update(ctx context.Context, id int64, req model.CreateP
 	}
 	oldProduct, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return model.Product{}, ErrProductNotFound
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Product{}, ErrProductNotFound
+		}
+		return model.Product{}, err
 	}
 	updatedProduct, err := s.repo.Update(ctx, id, req)
 	if err != nil {
@@ -104,7 +108,13 @@ func (s *ProductService) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
 	}
-	s.changeSvc.RecordFieldChange(ctx, id, "deleted", strPtr(*oldProduct.Name), nil)
+	var name string
+	if oldProduct.Name != nil {
+		name = *oldProduct.Name
+	}
+	if err := s.changeSvc.RecordFieldChange(ctx, id, "deleted", &name, nil); err != nil {
+		log.Printf("Delete: failed to record change for product %d: %v", id, err)
+	}
 	return nil
 }
 
@@ -184,7 +194,9 @@ func (s *ProductService) recoredChange(ctx context.Context, oldProd, newProd mod
 		if equalPtr(oldVal, newVal) {
 			return
 		}
-		_ = s.changeSvc.RecordFieldChange(ctx, newProd.ID, field, oldVal, newVal)
+		if err := s.changeSvc.RecordFieldChange(ctx, newProd.ID, field, oldVal, newVal); err != nil {
+			log.Printf("recoredChange: failed to record change for product %d field %s: %v", newProd.ID, field, err)
+		}
 	}
 
 	compare("name", oldProd.Name, newProd.Name)

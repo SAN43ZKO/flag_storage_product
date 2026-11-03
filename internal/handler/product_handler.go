@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"storage/internal/model"
@@ -39,7 +40,7 @@ type ReceiptResult struct {
 	Errors  []string `json:"errors,omitempty"`
 }
 
-func NewProductHundler(svc *service.ProductService, uploadDir string) *ProductHandler {
+func NewProductHandler(svc *service.ProductService, uploadDir string) *ProductHandler {
 	return &ProductHandler{svc: svc, uploadDir: uploadDir}
 }
 
@@ -48,15 +49,15 @@ func (h *ProductHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/products/low-stock", h.GetLowStock)
 	mux.HandleFunc("GET /api/categories", h.GetCategories)
 	mux.HandleFunc("GET /api/units", h.GetUnits)
+	mux.HandleFunc("POST /products/receipt", h.ProcessReceipt)
+	mux.HandleFunc("GET /products/autocomplete", h.Autocomplete)
+	mux.HandleFunc("GET /products/images/{filename}", h.ServeImage)
 	mux.HandleFunc("GET /products", h.List)
 	mux.HandleFunc("POST /products", h.Create)
 	mux.HandleFunc("GET /products/{id}", h.GetByID)
 	mux.HandleFunc("PUT /products/{id}", h.Update)
 	mux.HandleFunc("DELETE /products/{id}", h.Delete)
 	mux.HandleFunc("POST /products/{id}/image", h.UploadImage)
-	mux.HandleFunc("GET /products/images/{filename}", h.ServeImage)
-	mux.HandleFunc("POST /products/receipt", h.ProcessReceipt)
-	mux.HandleFunc("GET /products/autocomplete", h.Autocomplete)
 }
 
 func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +159,10 @@ func (h *ProductHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.ParseMultipartForm(10 << 20)
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "file too large or invalid form")
+		return
+	}
 	file, header, err := r.FormFile("image")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "failed to read image")
@@ -167,6 +171,10 @@ func (h *ProductHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	ext := filepath.Ext(header.Filename)
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".gif" && ext != ".webp" {
+		writeError(w, http.StatusBadRequest, "unsupported image format")
+		return
+	}
 	filename := fmt.Sprintf("product_%d_%d%s", id, time.Now().UnixNano(), ext)
 	filePath := filepath.Join(h.uploadDir, filename)
 	log.Printf("Saving file: %s", filename)
@@ -189,19 +197,17 @@ func (h *ProductHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to update product")
 		return
 	}
-	log.Printf("Calling UpdateImage: productID=%d, filename=%s", id, filename)
-	if err := h.svc.UpdateImage(r.Context(), id, filename); err != nil {
-		log.Printf("UpdateImage failed: %v", err)
-		os.Remove(filePath)
-		writeError(w, http.StatusInternalServerError, "failed to update product")
-		return
-	}
 	log.Printf("Image uploaded successfully: productID=%d", id)
 	writeJson(w, http.StatusOK, map[string]string{"image_path": filename})
 }
 
 func (h *ProductHandler) ServeImage(w http.ResponseWriter, r *http.Request) {
 	filename := r.PathValue("filename")
+	// Reject any path traversal attempt before touching the filesystem.
+	if filename == "" || filename != filepath.Base(filename) || strings.Contains(filename, "..") {
+		writeError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
 	http.ServeFile(w, r, filepath.Join(h.uploadDir, filename))
 }
 
